@@ -21,7 +21,7 @@ The e2e test looks for Chromium under `/opt/pw-browsers`. Set `CHROME_PATH` to u
 
 ## Deploy
 
-`dist/` is plain static files. Host them on any static host, such as Vercel, Cloudflare Pages or Netlify. Then open the URL on your phone and choose "Add to Home Screen". The app asks the browser for persistent storage the first time you save, and it reminds you to make a backup every 30 days.
+Every push to `main` runs the tests and publishes the app to GitHub Pages at https://disura-randunu.github.io/pocket-ledger/ (see `.github/workflows/deploy.yml`). In the repo settings, Pages must be set to deploy from "GitHub Actions". `dist/` is plain static files, so any other static host works too. Then open the URL on your phone and choose "Add to Home Screen". The app asks the browser for persistent storage the first time you save, and it reminds you to make a backup every 30 days.
 
 ## Layout
 
