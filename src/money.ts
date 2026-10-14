@@ -1,3 +1,6 @@
+/** Sri Lankan Rupees. Changeable in Settings. */
+export const DEFAULT_CURRENCY = 'Rs. ';
+
 export type TxType = 'expense' | 'income';
 
 export interface Tx {

@@ -80,4 +80,4 @@ main { max-width: 520px; margin: 0 auto; padding: max(12px, env(safe-area-inset-
 .file { position: relative; overflow: hidden; }
 .file input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
 .field { display: flex; align-items: center; gap: 12px; margin-bottom: 4px; }
-.field input { max-width: 90px; text-align: center; }
+.field input { max-width: 100px; text-align: center; }

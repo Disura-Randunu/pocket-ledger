@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'preact/hooks';
 import * as store from './db';
 import {
-  formatCents, monthKey, monthLabel, parseCents, shiftMonth, summarize, toCSV, todayISO, validateBackup,
+  DEFAULT_CURRENCY, formatCents, monthKey, monthLabel, parseCents, shiftMonth, summarize, toCSV, todayISO, validateBackup,
   type Backup, type Category, type Tx, type TxType,
 } from './money';
 
@@ -20,7 +20,7 @@ export function App() {
   const [month, setMonth] = useState(monthKey(todayISO()));
   const [txs, setTxs] = useState<Tx[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
-  const [currency, setCurrency] = useState('$');
+  const [currency, setCurrency] = useState(DEFAULT_CURRENCY);
   const [lastBackupAt, setLastBackupAt] = useState(0);
   const [hasAny, setHasAny] = useState(false);
   const [editing, setEditing] = useState<Tx | 'new' | null>(null);
@@ -35,7 +35,7 @@ export function App() {
   useEffect(() => {
     (async () => {
       setCategories(await store.listCategories());
-      setCurrency(await store.getSetting('currency', '$'));
+      setCurrency(await store.getSetting('currency', DEFAULT_CURRENCY));
       setLastBackupAt(await store.getSetting('lastBackupAt', 0));
     })();
   }, []);
@@ -148,7 +148,7 @@ export function App() {
           <div class="sheet" onClick={(e) => e.stopPropagation()}>
             <h2>Settings</h2>
             <label class="field">Currency symbol
-              <input value={currency} maxLength={4} onInput={(e) => {
+              <input value={currency} maxLength={6} onInput={(e) => {
                 const v = (e.target as HTMLInputElement).value;
                 setCurrency(v);
                 store.setSetting('currency', v);

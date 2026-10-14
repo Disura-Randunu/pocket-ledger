@@ -30,16 +30,16 @@ try {
   assert(await page.locator('h1').isVisible(), 'app loads with no network');
 
   await page.click('button[aria-label="Add"]');
-  for (const k of ['1', '2', '.', '5']) await page.click(`.keypad button:text-is("${k}")`);
-  assert((await page.textContent('[data-testid=amount]')) === '$12.5', 'keypad enters amount');
+  for (const k of ['1', '2', '5', '0']) await page.click(`.keypad button:text-is("${k}")`);
+  assert((await page.textContent('[data-testid=amount]')) === 'Rs. 1250', 'keypad enters amount');
   await page.fill('input[placeholder^="Note"]', 'Lunch');
   await page.click('.cat:has-text("Food")');
   await page.locator('.list li:has-text("Lunch")').waitFor();
-  assert((await page.textContent('[data-testid=spent]')) === '$12.50', 'expense saved in 3 taps and total updates');
+  assert((await page.textContent('[data-testid=spent]')) === 'Rs. 1,250.00', 'expense saved in 3 taps and total updates');
 
   await page.reload();
   await page.locator('.list li:has-text("Lunch")').waitFor();
-  assert((await page.textContent('[data-testid=spent]')) === '$12.50', 'data survives an offline reload');
+  assert((await page.textContent('[data-testid=spent]')) === 'Rs. 1,250.00', 'data survives an offline reload');
   assert(await page.locator('.list li:has-text("Lunch")').isVisible(), 'transaction is listed');
   await page.screenshot({ path: 'e2e/home.png' });
 
