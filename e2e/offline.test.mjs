@@ -45,6 +45,16 @@ try {
 
   await page.click('.list li:has-text("Lunch")');
   await page.screenshot({ path: 'e2e/editor.png' });
+
+  await page.click('.sheet-bg', { position: { x: 10, y: 10 } });
+  await page.click('button[aria-label="Settings"]');
+  await page.click('button:text-is("සිංහල")');
+  await page.screenshot({ path: 'e2e/settings-si.png' });
+  await page.click('button:text-is("හරි")');
+  await page.reload();
+  await page.locator('.summary span:text-is("වියදම")').waitFor();
+  assert(await page.locator('.bar-label:has-text("ආහාර")').isVisible(), 'Sinhala is remembered after reload');
+  await page.screenshot({ path: 'e2e/home-si.png' });
   console.log('all e2e checks passed');
 } finally {
   await browser.close();

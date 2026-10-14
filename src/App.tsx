@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'preact/hooks';
 import * as store from './db';
+import { dayLabel, detectLang, monthTitle, STRINGS, type Lang, type Strings } from './i18n';
 import {
-  DEFAULT_CURRENCY, formatCents, monthKey, monthLabel, parseCents, shiftMonth, summarize, toCSV, todayISO, validateBackup,
+  DEFAULT_CURRENCY, formatCents, monthKey, parseCents, shiftMonth, summarize, toCSV, todayISO, validateBackup,
   type Backup, type Category, type Tx, type TxType,
 } from './money';
 
@@ -25,6 +26,8 @@ export function App() {
   const [hasAny, setHasAny] = useState(false);
   const [editing, setEditing] = useState<Tx | 'new' | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [lang, setLang] = useState<Lang>(detectLang());
+  const t = STRINGS[lang];
 
   async function refresh() {
     const [list, all] = await Promise.all([store.listMonth(month), store.listAll()]);
@@ -37,12 +40,14 @@ export function App() {
       setCategories(await store.listCategories());
       setCurrency(await store.getSetting('currency', DEFAULT_CURRENCY));
       setLastBackupAt(await store.getSetting('lastBackupAt', 0));
+      setLang(await store.getSetting<Lang>('lang', detectLang()));
     })();
   }, []);
 
   useEffect(() => { refresh(); }, [month]);
+  useEffect(() => { document.documentElement.lang = lang; }, [lang]);
 
-  const cat = (id: string) => categories.find((c) => c.id === id);
+  const cat = (id: string) => localize(categories.find((c) => c.id === id), t);
   const s = summarize(txs);
   const money = (c: number) => formatCents(c, currency);
   const needsBackup = hasAny && Date.now() - lastBackupAt > BACKUP_REMINDER_DAYS * 86400000;
@@ -63,7 +68,7 @@ export function App() {
   }
 
   async function exportCSV() {
-    download(`pocket-ledger-${todayISO()}.csv`, toCSV(await store.listAll(), categories), 'text/csv');
+    download(`pocket-ledger-${todayISO()}.csv`, toCSV(await store.listAll(), categories.map((c) => localize(c, t)!)), 'text/csv');
   }
 
   async function importJSON(file: File) {
@@ -71,31 +76,32 @@ export function App() {
       const n = await store.importBackup(validateBackup(JSON.parse(await file.text())));
       setCategories(await store.listCategories());
       await refresh();
-      alert(`Imported ${n} transactions.`);
+      alert(t.imported(n));
     } catch (e) {
-      alert(e instanceof Error && !(e instanceof SyntaxError) ? e.message : 'Could not read that file.');
+      const code = e instanceof Error ? e.message : '';
+      alert(code === 'not-backup' ? t.notBackup : code === 'invalid-tx' ? t.invalidTx : t.unreadable);
     }
   }
 
   return (
     <main>
       <header class="top">
-        <button class="icon" aria-label="Previous month" onClick={() => setMonth(shiftMonth(month, -1))}>‹</button>
-        <h1>{monthLabel(month)}</h1>
-        <button class="icon" aria-label="Next month" onClick={() => setMonth(shiftMonth(month, 1))}>›</button>
-        <button class="icon gear" aria-label="Settings" onClick={() => setSettingsOpen(true)}>⚙︎</button>
+        <button class="icon" aria-label={t.prevMonth} onClick={() => setMonth(shiftMonth(month, -1))}>‹</button>
+        <h1>{monthTitle(month, t)}</h1>
+        <button class="icon" aria-label={t.nextMonth} onClick={() => setMonth(shiftMonth(month, 1))}>›</button>
+        <button class="icon gear" aria-label={t.settings} onClick={() => setSettingsOpen(true)}>⚙︎</button>
       </header>
 
       <section class="summary">
-        <div class="spent"><span>Spent</span><strong data-testid="spent">{money(s.spent)}</strong></div>
+        <div class="spent"><span>{t.spent}</span><strong data-testid="spent">{money(s.spent)}</strong></div>
         <div class="row">
-          <div><span>Income</span><b>{money(s.income)}</b></div>
-          <div><span>Net</span><b class={s.net < 0 ? 'neg' : 'pos'}>{money(s.net)}</b></div>
+          <div><span>{t.income}</span><b>{money(s.income)}</b></div>
+          <div><span>{t.net}</span><b class={s.net < 0 ? 'neg' : 'pos'}>{money(s.net)}</b></div>
         </div>
       </section>
 
       {needsBackup && (
-        <button class="banner" onClick={exportJSON}>Your data lives only on this phone. Tap to save a backup.</button>
+        <button class="banner" onClick={exportJSON}>{t.backupBanner}</button>
       )}
 
       {s.byCategory.length > 0 && (
@@ -113,26 +119,27 @@ export function App() {
       )}
 
       <ul class="list">
-        {txs.length === 0 && <li class="empty">Nothing yet this month. Tap + to add.</li>}
-        {txs.map((t) => (
-          <li key={t.id} onClick={() => setEditing(t)}>
-            <span class="emoji">{cat(t.categoryId)?.emoji ?? '•'}</span>
+        {txs.length === 0 && <li class="empty">{t.empty}</li>}
+        {txs.map((tx) => (
+          <li key={tx.id} onClick={() => setEditing(tx)}>
+            <span class="emoji">{cat(tx.categoryId)?.emoji ?? '•'}</span>
             <span class="what">
-              <span>{t.note || cat(t.categoryId)?.name || 'Other'}</span>
-              <small>{new Date(t.date + 'T00:00').toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })}</small>
+              <span>{tx.note || cat(tx.categoryId)?.name || t.categories.other}</span>
+              <small>{dayLabel(tx.date, t)}</small>
             </span>
-            <span class={t.type === 'income' ? 'amt pos' : 'amt'}>{t.type === 'income' ? '+' : '−'}{money(t.amount)}</span>
+            <span class={tx.type === 'income' ? 'amt pos' : 'amt'}>{tx.type === 'income' ? '+' : '−'}{money(tx.amount)}</span>
           </li>
         ))}
       </ul>
 
-      <button class="fab" aria-label="Add" onClick={() => setEditing('new')}>+</button>
+      <button class="fab" aria-label={t.add} onClick={() => setEditing('new')}>+</button>
 
       {editing && (
         <Editor
           tx={editing === 'new' ? null : editing}
           month={month}
-          categories={categories}
+          categories={categories.map((c) => localize(c, t)!)}
+          t={t}
           currency={currency}
           onClose={() => setEditing(null)}
           onSaved={async (date) => {
@@ -146,27 +153,35 @@ export function App() {
       {settingsOpen && (
         <div class="sheet-bg" onClick={() => setSettingsOpen(false)}>
           <div class="sheet" onClick={(e) => e.stopPropagation()}>
-            <h2>Settings</h2>
-            <label class="field">Currency symbol
+            <h2>{t.settings}</h2>
+            <div class="field">{t.language}
+              <div class="toggle small">
+                {(['si', 'en'] as Lang[]).map((l) => (
+                  <button key={l} class={lang === l ? 'on' : ''} onClick={() => { setLang(l); store.setSetting('lang', l); }}>
+                    {l === 'si' ? 'සිංහල' : 'English'}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <label class="field">{t.currency}
               <input value={currency} maxLength={6} onInput={(e) => {
                 const v = (e.target as HTMLInputElement).value;
                 setCurrency(v);
                 store.setSetting('currency', v);
               }} />
             </label>
-            <button class="wide" onClick={exportJSON}>Save backup (JSON)</button>
-            <button class="wide" onClick={exportCSV}>Export spreadsheet (CSV)</button>
-            <label class="wide file">Restore from backup
+            <button class="wide" onClick={exportJSON}>{t.saveBackup}</button>
+            <button class="wide" onClick={exportCSV}>{t.exportCSV}</button>
+            <label class="wide file">{t.restore}
               <input type="file" accept="application/json,.json" onChange={(e) => {
                 const f = (e.target as HTMLInputElement).files?.[0];
                 if (f) importJSON(f);
               }} />
             </label>
             <p class="hint">
-              {lastBackupAt ? `Last backup ${new Date(lastBackupAt).toLocaleDateString()}.` : 'No backup yet.'} Your data
-              never leaves this phone unless you export it.
+              {lastBackupAt ? t.lastBackup(new Date(lastBackupAt).toLocaleDateString(t.locale)) : t.noBackup} {t.privacy}
             </p>
-            <button class="wide ghost" onClick={() => setSettingsOpen(false)}>Done</button>
+            <button class="wide ghost" onClick={() => setSettingsOpen(false)}>{t.done}</button>
           </div>
         </div>
       )}
@@ -174,13 +189,18 @@ export function App() {
   );
 }
 
+/** Shows built-in categories in the current language; user-added ones keep their own name. */
+function localize(c: Category | undefined, t: Strings): Category | undefined {
+  return c && t.categories[c.id] ? { ...c, name: t.categories[c.id] } : c;
+}
+
 const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', '⌫'];
 
 function Editor(props: {
-  tx: Tx | null; month: string; categories: Category[]; currency: string;
+  tx: Tx | null; month: string; categories: Category[]; currency: string; t: Strings;
   onClose: () => void; onSaved: (date: string) => void;
 }) {
-  const { tx, categories, currency } = props;
+  const { tx, categories, currency, t } = props;
   const today = todayISO();
   const [type, setType] = useState<TxType>(tx?.type ?? 'expense');
   const [amount, setAmount] = useState(tx ? (tx.amount / 100).toFixed(2).replace(/\.00$/, '') : '');
@@ -207,8 +227,8 @@ function Editor(props: {
     <div class="sheet-bg" onClick={props.onClose}>
       <div class="sheet editor" onClick={(e) => e.stopPropagation()}>
         <div class="toggle">
-          <button class={type === 'expense' ? 'on' : ''} onClick={() => setType('expense')}>Expense</button>
-          <button class={type === 'income' ? 'on' : ''} onClick={() => setType('income')}>Income</button>
+          <button class={type === 'expense' ? 'on' : ''} onClick={() => setType('expense')}>{t.expense}</button>
+          <button class={type === 'income' ? 'on' : ''} onClick={() => setType('income')}>{t.income}</button>
         </div>
         <div class="amount" data-testid="amount">{currency}{amount || '0'}</div>
         <div class="keypad">
@@ -216,9 +236,9 @@ function Editor(props: {
         </div>
         <div class="meta">
           <input type="date" value={date} onInput={(e) => setDate((e.target as HTMLInputElement).value || today)} />
-          <input placeholder="Note (optional)" value={note} maxLength={60} onInput={(e) => setNote((e.target as HTMLInputElement).value)} />
+          <input placeholder={t.note} value={note} maxLength={60} onInput={(e) => setNote((e.target as HTMLInputElement).value)} />
         </div>
-        <p class="hint">{cents ? 'Tap a category to save' : 'Enter an amount, then tap a category'}</p>
+        <p class="hint">{cents ? t.tapToSave : t.enterAmount}</p>
         <div class="cats">
           {categories.filter((c) => c.type === type).map((c) => (
             <button key={c.id} disabled={!cents} class={tx?.categoryId === c.id ? 'cat sel' : 'cat'} onClick={() => save(c.id)}>
@@ -228,8 +248,8 @@ function Editor(props: {
         </div>
         {tx && (
           <button class="wide danger" onClick={async () => {
-            if (confirm('Delete this transaction?')) { await store.deleteTx(tx.id); props.onSaved(tx.date); }
-          }}>Delete</button>
+            if (confirm(t.confirmDelete)) { await store.deleteTx(tx.id); props.onSaved(tx.date); }
+          }}>{t.delete}</button>
         )}
       </div>
     </div>

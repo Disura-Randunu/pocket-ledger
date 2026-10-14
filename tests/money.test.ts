@@ -40,7 +40,7 @@ describe('money', () => {
   });
 
   it('rejects files that are not backups', () => {
-    expect(() => validateBackup({ foo: 1 })).toThrow('not a Pocket Ledger backup');
-    expect(() => validateBackup({ app: 'pocket-ledger', categories: [], transactions: [tx({ amount: 1.5 })] })).toThrow('invalid');
+    expect(() => validateBackup({ foo: 1 })).toThrow('not-backup');
+    expect(() => validateBackup({ app: 'pocket-ledger', categories: [], transactions: [tx({ amount: 1.5 })] })).toThrow('invalid-tx');
   });
 });

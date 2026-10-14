@@ -67,11 +67,6 @@ export function shiftMonth(key: string, delta: number): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 
-export function monthLabel(key: string): string {
-  const [y, m] = key.split('-').map(Number);
-  return new Date(y, m - 1, 1).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
-}
-
 export interface Summary {
   spent: number;
   income: number;
@@ -126,14 +121,14 @@ export interface Backup {
 export function validateBackup(data: unknown): Backup {
   const b = data as Backup;
   if (!b || b.app !== 'pocket-ledger' || !Array.isArray(b.transactions) || !Array.isArray(b.categories)) {
-    throw new Error('This file is not a Pocket Ledger backup.');
+    throw new Error('not-backup');
   }
   for (const t of b.transactions) {
     if (
       typeof t.id !== 'string' || !Number.isSafeInteger(t.amount) || t.amount <= 0 ||
       (t.type !== 'expense' && t.type !== 'income') || !/^\d{4}-\d{2}-\d{2}$/.test(t.date)
     ) {
-      throw new Error('The backup contains an invalid transaction.');
+      throw new Error('invalid-tx');
     }
   }
   return b;
