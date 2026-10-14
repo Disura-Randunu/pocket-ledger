@@ -1,0 +1,46 @@
+import { describe, expect, it } from 'vitest';
+import { formatCents, parseCents, shiftMonth, summarize, toCSV, validateBackup, DEFAULT_CATEGORIES, type Tx } from '../src/money';
+
+const tx = (p: Partial<Tx>): Tx => ({ id: 'x', amount: 100, type: 'expense', categoryId: 'food', note: '', date: '2026-10-01', createdAt: 0, ...p });
+
+describe('money', () => {
+  it('parses amounts to cents', () => {
+    expect(parseCents('12')).toBe(1200);
+    expect(parseCents('12.5')).toBe(1250);
+    expect(parseCents('1,234.56')).toBe(123456);
+    expect(parseCents('0.1')).toBe(10);
+    expect(parseCents('0')).toBeNull();
+    expect(parseCents('1.234')).toBeNull();
+    expect(parseCents('abc')).toBeNull();
+  });
+
+  it('formats cents', () => {
+    expect(formatCents(123456, '$')).toBe('$1,234.56');
+    expect(formatCents(-5, 'Rs ')).toBe('-Rs 0.05');
+  });
+
+  it('shifts months across years', () => {
+    expect(shiftMonth('2026-01', -1)).toBe('2025-12');
+    expect(shiftMonth('2026-12', 1)).toBe('2027-01');
+  });
+
+  it('summarizes a month', () => {
+    const s = summarize([
+      tx({ id: '1', amount: 300, categoryId: 'food' }),
+      tx({ id: '2', amount: 100, categoryId: 'fun' }),
+      tx({ id: '3', amount: 1000, type: 'income', categoryId: 'salary' }),
+    ]);
+    expect(s).toMatchObject({ spent: 400, income: 1000, net: 600 });
+    expect(s.byCategory[0]).toEqual({ categoryId: 'food', total: 300, share: 0.75 });
+  });
+
+  it('exports CSV with escaping', () => {
+    const csv = toCSV([tx({ note: 'lunch, "big"' })], DEFAULT_CATEGORIES);
+    expect(csv).toBe('date,type,category,amount,note\n2026-10-01,expense,Food,1.00,"lunch, ""big"""\n');
+  });
+
+  it('rejects files that are not backups', () => {
+    expect(() => validateBackup({ foo: 1 })).toThrow('not a Pocket Ledger backup');
+    expect(() => validateBackup({ app: 'pocket-ledger', categories: [], transactions: [tx({ amount: 1.5 })] })).toThrow('invalid');
+  });
+});
