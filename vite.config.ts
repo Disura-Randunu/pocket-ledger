@@ -1,3 +1,4 @@
+/// <reference types="vitest/config" />
 import { defineConfig, type Plugin } from 'vite';
 import preact from '@preact/preset-vite';
 import { createHash } from 'node:crypto';
@@ -32,4 +33,6 @@ function serviceWorker(): Plugin {
 export default defineConfig({
   base: './',
   plugins: [preact(), serviceWorker()],
+  // The browser test in e2e/ runs separately with `npm run test:e2e`.
+  test: { include: ['tests/**/*.test.ts'] },
 });
