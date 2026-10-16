@@ -25,7 +25,8 @@ main { max-width: 520px; margin: 0 auto; padding: max(12px, env(safe-area-inset-
 @media (prefers-color-scheme: dark) { .summary { color: #04201d; } }
 .summary span { display: block; font-size: 13px; opacity: .85; }
 .spent strong { font-size: 36px; font-weight: 700; letter-spacing: -0.5px; }
-.summary .row { display: flex; gap: 24px; margin-top: 8px; }
+.summary .row { display: flex; flex-wrap: wrap; gap: 8px 20px; margin-top: 8px; }
+.summary .row b { white-space: nowrap; font-size: 15px; }
 .summary .neg, .summary .pos { color: inherit; }
 
 .banner { display: block; width: 100%; text-align: left; padding: 12px 14px; margin-bottom: 12px;
@@ -83,3 +84,11 @@ main { max-width: 520px; margin: 0 auto; padding: max(12px, env(safe-area-inset-
 .field input { max-width: 100px; text-align: center; }
 .field { justify-content: space-between; }
 .toggle.small button { padding: 6px 12px; }
+
+.carry { background: var(--card); border-radius: 16px; padding: 14px; margin-bottom: 12px; border: 1px solid var(--accent-soft); }
+.carry p { margin: 0 0 10px; }
+.carry-actions { display: flex; gap: 8px; }
+.carry-actions button { flex: 1; padding: 10px; border-radius: 12px; background: var(--line); }
+.carry-actions .primary { background: var(--accent); color: #fff; font-weight: 600; }
+@media (prefers-color-scheme: dark) { .carry-actions .primary { color: #04201d; } }
+.carry-link { display: block; width: 100%; padding: 4px 4px 12px; text-align: left; color: var(--accent); font-size: 14px; }

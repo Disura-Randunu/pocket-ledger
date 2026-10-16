@@ -47,6 +47,45 @@ try {
   await page.screenshot({ path: 'e2e/editor.png' });
 
   await page.click('.sheet-bg', { position: { x: 10, y: 10 } });
+
+  // Carry-over: September ends with a balance, October offers to bring it in.
+  page.on('dialog', (d) => d.accept());
+  const text = (id) => page.textContent(`[data-testid=${id}]`);
+  const add = async (keys, category, income = false) => {
+    await page.click('button[aria-label="Add"]');
+    if (income) await page.click('.toggle button:text-is("Income")');
+    for (const k of keys) await page.click(`.keypad button:text-is("${k}")`);
+    await page.click(`.cat:has-text("${category}")`);
+    await page.locator('.sheet').waitFor({ state: 'detached' });
+  };
+  await page.click('button[aria-label="Previous month"]');
+  await page.locator('h1:text-is("September 2026")').waitFor();
+  await add('50000', 'Salary', true);
+  await add('1000', 'Food');
+  await page.click('button[aria-label="Next month"]');
+  await page.locator('.carry:has-text("September ended with Rs. 49,000.00")').waitFor();
+  assert(true, 'next month offers to carry the balance');
+  await page.screenshot({ path: 'e2e/carry-prompt.png' });
+  await page.click('.carry button:text-is("Carry over")');
+  await page.locator('.list li:has-text("September balance")').waitFor();
+  assert((await text('carried')) === 'Rs. 49,000.00' && (await text('net')) === 'Rs. 47,750.00', 'one tap carries it and net includes it');
+  assert((await text('spent')) === 'Rs. 1,250.00', 'carry-over is not counted as spending');
+  await page.screenshot({ path: 'e2e/carry-done.png' });
+
+  await page.click('button[aria-label="Previous month"]');
+  await add('500', 'Food');
+  await page.click('button[aria-label="Next month"]');
+  await page.locator('[data-testid=carried]:text-is("Rs. 48,500.00")').waitFor();
+  assert(true, 'carry-over follows later edits to the previous month');
+
+  await page.click('.list li:has-text("September balance")');
+  await page.locator('[data-testid=carried]').waitFor({ state: 'detached' });
+  assert(!(await page.locator('.carry').count()), 'removing it does not nag again');
+  await page.click('button[aria-label="Previous month"]');
+  await page.locator('.carry-link:has-text("Carry Rs. 48,500.00 into October")').waitFor();
+  assert(true, 'a past month still offers a quiet way to carry later');
+  await page.click('button[aria-label="Next month"]');
+  await page.locator('h1:text-is("October 2026")').waitFor();
   await page.click('button[aria-label="Settings"]');
   await page.click('button:text-is("සිංහල")');
   await page.screenshot({ path: 'e2e/settings-si.png' });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatCents, parseCents, shiftMonth, summarize, toCSV, validateBackup, DEFAULT_CATEGORIES, type Tx } from '../src/money';
+import { CARRY, formatCents, parseCents, shiftMonth, summarize, toCSV, validateBackup, DEFAULT_CATEGORIES, type Tx } from '../src/money';
 
 const tx = (p: Partial<Tx>): Tx => ({ id: 'x', amount: 100, type: 'expense', categoryId: 'food', note: '', date: '2026-10-01', createdAt: 0, ...p });
 
@@ -30,8 +30,18 @@ describe('money', () => {
       tx({ id: '2', amount: 100, categoryId: 'fun' }),
       tx({ id: '3', amount: 1000, type: 'income', categoryId: 'salary' }),
     ]);
-    expect(s).toMatchObject({ spent: 400, income: 1000, net: 600 });
+    expect(s).toMatchObject({ spent: 400, income: 1000, carried: 0, net: 600 });
     expect(s.byCategory[0]).toEqual({ categoryId: 'food', total: 300, share: 0.75 });
+  });
+
+  it('counts carried balances toward net only', () => {
+    const s = summarize([
+      tx({ id: '1', amount: 300, categoryId: 'food' }),
+      tx({ id: '2', amount: 500, type: 'income', categoryId: CARRY }),
+      tx({ id: '3', amount: 50, type: 'expense', categoryId: CARRY }),
+    ]);
+    expect(s).toMatchObject({ spent: 300, income: 0, carried: 450, net: 150 });
+    expect(s.byCategory.map((b) => b.categoryId)).toEqual(['food']);
   });
 
   it('exports CSV with escaping', () => {

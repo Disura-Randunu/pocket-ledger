@@ -4,6 +4,7 @@ A tiny offline-first money tracker that runs as an installable web app (PWA). It
 
 - Log an expense by tapping +, typing the amount, then tapping a category.
 - The monthly view shows what you spent, your income, your net total and a breakdown by category.
+- When a month ends with money left over (or a shortfall), the next month offers a one-tap carry-over. The carried amount stays correct if you edit the old month later, and tapping it lets you remove it.
 - You can save a JSON backup and restore it, or export a CSV spreadsheet.
 - It works in Sinhala or English. It follows the phone's language, and you can switch in Settings.
 - The whole app is about 14 KB gzipped and works fully offline after the first visit.

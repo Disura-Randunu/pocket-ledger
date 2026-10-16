@@ -32,7 +32,15 @@ const en = {
   notBackup: 'This file is not a Pocket Ledger backup.',
   invalidTx: 'The backup contains an invalid transaction.',
   unreadable: 'Could not read that file.',
+  carried: 'Carried',
+  carryPrompt: (from: string, amount: string, to: string) => `${from} ended with ${amount}. Carry it into ${to}?`,
+  carryYes: 'Carry over',
+  carryNo: 'No thanks',
+  carryLink: (amount: string, to: string) => `Carry ${amount} into ${to}`,
+  carriedFrom: (from: string) => `${from} balance`,
+  removeCarry: 'Remove this carry-over?',
   categories: {
+    carry: 'Carried over',
     food: 'Food', transport: 'Transport', bills: 'Bills', shopping: 'Shopping', health: 'Health',
     fun: 'Fun', other: 'Other', salary: 'Salary', gift: 'Gift', 'other-in': 'Other',
   } as Record<string, string>,
@@ -72,7 +80,15 @@ const si: Strings = {
   notBackup: 'මෙය Pocket Ledger උපස්ථ ගොනුවක් නොවේ.',
   invalidTx: 'උපස්ථයේ වලංගු නොවන ගනුදෙනුවක් ඇත.',
   unreadable: 'එම ගොනුව කියවිය නොහැක.',
+  carried: 'ගෙන ආ',
+  carryPrompt: (from, amount, to) => `${from} මාසය ${amount} ශේෂයකින් අවසන් විය. එය ${to} මාසයට ගෙන යන්නද?`,
+  carryYes: 'ගෙන යන්න',
+  carryNo: 'එපා',
+  carryLink: (amount, to) => `${amount} ${to} මාසයට ගෙන යන්න`,
+  carriedFrom: (from) => `${from} ශේෂය`,
+  removeCarry: 'මෙම ගෙන ආ ශේෂය ඉවත් කරන්නද?',
   categories: {
+    carry: 'ගෙන ආ ශේෂය',
     food: 'ආහාර', transport: 'ප්‍රවාහනය', bills: 'බිල්පත්', shopping: 'සාප්පු සවාරි', health: 'සෞඛ්‍යය',
     fun: 'විනෝදය', other: 'වෙනත්', salary: 'වැටුප', gift: 'තෑගි', 'other-in': 'වෙනත්',
   },
@@ -97,4 +113,10 @@ export function dayLabel(date: string, t: Strings): string {
   const d = new Date(date + 'T00:00');
   if (t.months && t.weekdays) return `${t.months[d.getMonth()]} ${d.getDate()}, ${t.weekdays[d.getDay()]}`;
   return d.toLocaleDateString(t.locale, { weekday: 'short', day: 'numeric', month: 'short' });
+}
+
+/** "October" / "ඔක්තෝබර්" for a month key like "2026-10". */
+export function monthName(key: string, t: Strings): string {
+  const [y, m] = key.split('-').map(Number);
+  return t.months ? t.months[m - 1] : new Date(y, m - 1, 1).toLocaleDateString(t.locale, { month: 'long' });
 }

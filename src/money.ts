@@ -67,19 +67,29 @@ export function shiftMonth(key: string, delta: number): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 
+/** Category id for a balance carried in from the previous month. */
+export const CARRY = 'carry';
+
+/** Deterministic id, so each month has at most one carry-over entry. */
+export const carryId = (fromMonth: string) => `carry-${fromMonth}`;
+
 export interface Summary {
   spent: number;
   income: number;
-  net: number;
+  carried: number; // signed: positive brought a surplus in, negative a deficit
+  net: number; // income - spent + carried: what's left at the end of the month
   byCategory: { categoryId: string; total: number; share: number }[];
 }
 
 export function summarize(txs: Tx[]): Summary {
   let spent = 0;
   let income = 0;
+  let carried = 0;
   const totals = new Map<string, number>();
   for (const t of txs) {
-    if (t.type === 'expense') {
+    if (t.categoryId === CARRY) {
+      carried += t.type === 'income' ? t.amount : -t.amount;
+    } else if (t.type === 'expense') {
       spent += t.amount;
       totals.set(t.categoryId, (totals.get(t.categoryId) ?? 0) + t.amount);
     } else {
@@ -89,7 +99,7 @@ export function summarize(txs: Tx[]): Summary {
   const byCategory = [...totals.entries()]
     .map(([categoryId, total]) => ({ categoryId, total, share: spent ? total / spent : 0 }))
     .sort((a, b) => b.total - a.total);
-  return { spent, income, net: income - spent, byCategory };
+  return { spent, income, carried, net: income - spent + carried, byCategory };
 }
 
 function csvCell(value: string): string {

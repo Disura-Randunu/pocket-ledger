@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'preact/hooks';
 import * as store from './db';
-import { dayLabel, detectLang, monthTitle, STRINGS, type Lang, type Strings } from './i18n';
+import { dayLabel, detectLang, monthName, monthTitle, STRINGS, type Lang, type Strings } from './i18n';
 import {
-  DEFAULT_CURRENCY, formatCents, monthKey, parseCents, shiftMonth, summarize, toCSV, todayISO, validateBackup,
+  CARRY, carryId, DEFAULT_CURRENCY, formatCents, monthKey, parseCents, shiftMonth, summarize, toCSV, todayISO, validateBackup,
   type Backup, type Category, type Tx, type TxType,
 } from './money';
 
@@ -27,12 +27,39 @@ export function App() {
   const [editing, setEditing] = useState<Tx | 'new' | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [lang, setLang] = useState<Lang>(detectLang());
+  const [prevNet, setPrevNet] = useState(0);
+  const [carriedOut, setCarriedOut] = useState(true);
+  const [dismissed, setDismissed] = useState<string[]>([]);
   const t = STRINGS[lang];
 
+  const prev = shiftMonth(month, -1);
+  const next = shiftMonth(month, 1);
+
   async function refresh() {
-    const [list, all] = await Promise.all([store.listMonth(month), store.listAll()]);
+    const prevBalance = summarize(await store.listMonth(prev)).net;
+    // A carry-over follows later edits to the month it came from, so it never goes stale.
+    const carry = await store.getTx(carryId(prev));
+    if (carry) {
+      const signed = carry.type === 'income' ? carry.amount : -carry.amount;
+      if (prevBalance === 0) await store.deleteTx(carry.id);
+      else if (signed !== prevBalance) await store.saveTx(carryTx(prev, prevBalance));
+    }
+    const [list, all, out] = await Promise.all([store.listMonth(month), store.listAll(), store.getTx(carryId(month))]);
     setTxs(list);
     setHasAny(all.length > 0);
+    setPrevNet(prevBalance);
+    setCarriedOut(!!out);
+  }
+
+  async function carryOver(from: string, balance: number) {
+    await store.saveTx(carryTx(from, balance));
+    await refresh();
+  }
+
+  async function dismissCarry(from: string) {
+    const list = [...dismissed, from];
+    setDismissed(list);
+    await store.setSetting('carryDismissed', list);
   }
 
   useEffect(() => {
@@ -41,6 +68,7 @@ export function App() {
       setCurrency(await store.getSetting('currency', DEFAULT_CURRENCY));
       setLastBackupAt(await store.getSetting('lastBackupAt', 0));
       setLang(await store.getSetting<Lang>('lang', detectLang()));
+      setDismissed(await store.getSetting<string[]>('carryDismissed', []));
     })();
   }, []);
 
@@ -48,6 +76,9 @@ export function App() {
   useEffect(() => { document.documentElement.lang = lang; }, [lang]);
 
   const cat = (id: string) => localize(categories.find((c) => c.id === id), t);
+  const carryIn = txs.find((x) => x.categoryId === CARRY);
+  const showCarryPrompt = !carryIn && prevNet !== 0 && !dismissed.includes(prev);
+  const isPast = month < monthKey(todayISO());
   const s = summarize(txs);
   const money = (c: number) => formatCents(c, currency);
   const needsBackup = hasAny && Date.now() - lastBackupAt > BACKUP_REMINDER_DAYS * 86400000;
@@ -68,7 +99,7 @@ export function App() {
   }
 
   async function exportCSV() {
-    download(`pocket-ledger-${todayISO()}.csv`, toCSV(await store.listAll(), categories.map((c) => localize(c, t)!)), 'text/csv');
+    download(`pocket-ledger-${todayISO()}.csv`, toCSV(await store.listAll(), [...categories, CARRY_CATEGORY].map((c) => localize(c, t)!)), 'text/csv');
   }
 
   async function importJSON(file: File) {
@@ -96,9 +127,24 @@ export function App() {
         <div class="spent"><span>{t.spent}</span><strong data-testid="spent">{money(s.spent)}</strong></div>
         <div class="row">
           <div><span>{t.income}</span><b>{money(s.income)}</b></div>
-          <div><span>{t.net}</span><b class={s.net < 0 ? 'neg' : 'pos'}>{money(s.net)}</b></div>
+          {s.carried !== 0 && <div><span>{t.carried}</span><b data-testid="carried">{money(s.carried)}</b></div>}
+          <div><span>{t.net}</span><b data-testid="net" class={s.net < 0 ? 'neg' : 'pos'}>{money(s.net)}</b></div>
         </div>
       </section>
+
+      {showCarryPrompt && (
+        <section class="carry">
+          <p>{t.carryPrompt(monthName(prev, t), money(prevNet), monthName(month, t))}</p>
+          <div class="carry-actions">
+            <button class="primary" onClick={() => carryOver(prev, prevNet)}>{t.carryYes}</button>
+            <button onClick={() => dismissCarry(prev)}>{t.carryNo}</button>
+          </div>
+        </section>
+      )}
+
+      {isPast && !carriedOut && s.net !== 0 && (
+        <button class="carry-link" onClick={() => carryOver(month, s.net)}>↪︎ {t.carryLink(money(s.net), monthName(next, t))}</button>
+      )}
 
       {needsBackup && (
         <button class="banner" onClick={exportJSON}>{t.backupBanner}</button>
@@ -121,10 +167,16 @@ export function App() {
       <ul class="list">
         {txs.length === 0 && <li class="empty">{t.empty}</li>}
         {txs.map((tx) => (
-          <li key={tx.id} onClick={() => setEditing(tx)}>
-            <span class="emoji">{cat(tx.categoryId)?.emoji ?? '•'}</span>
+          <li key={tx.id} onClick={async () => {
+            if (tx.categoryId !== CARRY) return setEditing(tx);
+            if (!confirm(t.removeCarry)) return;
+            await store.deleteTx(tx.id);
+            await dismissCarry(prev);
+            await refresh();
+          }}>
+            <span class="emoji">{tx.categoryId === CARRY ? CARRY_CATEGORY.emoji : cat(tx.categoryId)?.emoji ?? '•'}</span>
             <span class="what">
-              <span>{tx.note || cat(tx.categoryId)?.name || t.categories.other}</span>
+              <span>{tx.categoryId === CARRY ? t.carriedFrom(monthName(prev, t)) : tx.note || cat(tx.categoryId)?.name || t.categories.other}</span>
               <small>{dayLabel(tx.date, t)}</small>
             </span>
             <span class={tx.type === 'income' ? 'amt pos' : 'amt'}>{tx.type === 'income' ? '+' : '−'}{money(tx.amount)}</span>
@@ -192,6 +244,16 @@ export function App() {
 /** Shows built-in categories in the current language; user-added ones keep their own name. */
 function localize(c: Category | undefined, t: Strings): Category | undefined {
   return c && t.categories[c.id] ? { ...c, name: t.categories[c.id] } : c;
+}
+
+const CARRY_CATEGORY: Category = { id: CARRY, name: 'Carried over', emoji: '↪️', type: 'income' };
+
+/** The entry that brings `from`'s end balance into the first day of the next month. */
+function carryTx(from: string, balance: number): Tx {
+  return {
+    id: carryId(from), amount: Math.abs(balance), type: balance > 0 ? 'income' : 'expense',
+    categoryId: CARRY, note: '', date: `${shiftMonth(from, 1)}-01`, createdAt: 0,
+  };
 }
 
 const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', '⌫'];

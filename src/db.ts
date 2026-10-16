@@ -32,6 +32,10 @@ export async function listAll(): Promise<Tx[]> {
   return (await db()).getAll('transactions');
 }
 
+export async function getTx(id: string): Promise<Tx | undefined> {
+  return (await db()).get('transactions', id);
+}
+
 export async function saveTx(tx: Tx): Promise<void> {
   await (await db()).put('transactions', tx);
 }
