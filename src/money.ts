@@ -18,6 +18,7 @@ export interface Category {
   name: string;
   emoji: string;
   type: TxType;
+  hidden?: boolean; // removed by the user; kept so past entries still show its name
 }
 
 export const DEFAULT_CATEGORIES: Category[] = [

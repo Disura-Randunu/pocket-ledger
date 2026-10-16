@@ -97,3 +97,17 @@ main { max-width: 520px; margin: 0 auto; padding: max(12px, env(safe-area-inset-
   display: flex; align-items: center; gap: 16px; padding: 10px 10px 10px 16px; border-radius: 14px;
   background: var(--text); color: var(--bg); box-shadow: 0 6px 20px rgba(0,0,0,.2); z-index: 5; }
 .toast button { color: var(--accent-soft); font-weight: 700; padding: 6px 10px; }
+
+.cat.new { color: var(--accent); border: 1.5px dashed var(--accent-soft); background: none; }
+.cat.new span { font-size: 22px; line-height: 30px; }
+.new-cat { margin-top: 10px; background: var(--card); border-radius: 14px; padding: 12px; }
+.emojis { display: grid; grid-template-columns: repeat(8, 1fr); gap: 4px; margin-bottom: 10px; }
+.emojis button { font-size: 22px; padding: 4px 0; border-radius: 10px; }
+.emojis .on { background: var(--accent-soft); }
+.new-cat input { width: 100%; padding: 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); margin-bottom: 10px; }
+.carry-actions button:disabled { opacity: .5; }
+.mine { margin: 6px 0 4px; }
+.mine > span { font-size: 14px; color: var(--muted); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.chip { padding: 6px 10px; border-radius: 999px; background: var(--card); font-size: 14px; }
+.chip b { color: var(--muted); margin-left: 4px; }

@@ -68,10 +68,10 @@ export function App() {
   async function remove(tx: Tx) {
     await store.deleteTx(tx.id);
     if (tx.categoryId === CARRY) await setCarryDismissed(prev, true);
+    await refresh();
     setDeleted(tx);
     clearTimeout(undoTimer.current);
     undoTimer.current = window.setTimeout(() => setDeleted(null), 6000);
-    await refresh();
   }
 
   async function undoDelete() {
@@ -223,6 +223,7 @@ export function App() {
           currency={currency}
           onClose={() => setEditing(null)}
           onDelete={async (tx) => { setEditing(null); await remove(tx); }}
+          onCategoryAdded={async () => setCategories(await store.listCategories())}
           onSaved={async (date) => {
             setEditing(null);
             navigator.storage?.persist?.();
@@ -251,6 +252,20 @@ export function App() {
                 store.setSetting('currency', v);
               }} />
             </label>
+            {categories.some((c) => c.id.startsWith('c-') && !c.hidden) && (
+              <div class="mine">
+                <span>{t.yourCategories}</span>
+                <div class="chips">
+                  {categories.filter((c) => c.id.startsWith('c-') && !c.hidden).map((c) => (
+                    <button key={c.id} class="chip" onClick={async () => {
+                      if (!confirm(t.removeCategory(c.name))) return;
+                      await store.saveCategory({ ...c, hidden: true });
+                      setCategories(await store.listCategories());
+                    }}>{c.emoji} {c.name} <b>×</b></button>
+                  ))}
+                </div>
+              </div>
+            )}
             <button class="wide" onClick={exportJSON}>{t.saveBackup}</button>
             <button class="wide" onClick={exportCSV}>{t.exportCSV}</button>
             <label class="wide file">{t.restore}
@@ -285,11 +300,14 @@ function carryTx(from: string, balance: number): Tx {
   };
 }
 
+const EMOJIS = ['🏠', '🛒', '⛽', '📱', '👕', '🎓', '🍼', '🐶', '✈️', '💇', '🎁', '🙏', '🍺', '🎬', '💰', '⭐'];
+
 const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', '⌫'];
 
 function Editor(props: {
   tx: Tx | null; month: string; categories: Category[]; currency: string; t: Strings;
   onClose: () => void; onSaved: (date: string) => void; onDelete: (tx: Tx) => void;
+  onCategoryAdded: () => Promise<void>;
 }) {
   const { tx, categories, currency, t } = props;
   const today = todayISO();
@@ -298,6 +316,20 @@ function Editor(props: {
   const [date, setDate] = useState(tx?.date ?? (monthKey(today) === props.month ? today : `${props.month}-01`));
   const [note, setNote] = useState(tx?.note ?? '');
   const cents = parseCents(amount);
+  const [adding, setAdding] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [newEmoji, setNewEmoji] = useState(EMOJIS[0]);
+
+  async function addCategory() {
+    const name = newName.trim();
+    if (!name) return;
+    const id = `c-${Date.now()}`;
+    await store.saveCategory({ id, name, emoji: newEmoji, type });
+    setAdding(false);
+    setNewName('');
+    await props.onCategoryAdded();
+    if (cents) await save(id); // amount already typed: finish the entry in the same tap
+  }
 
   function press(k: string) {
     if (k === '⌫') return setAmount(amount.slice(0, -1));
@@ -331,12 +363,33 @@ function Editor(props: {
         </div>
         <p class="hint">{cents ? t.tapToSave : t.enterAmount}</p>
         <div class="cats">
-          {categories.filter((c) => c.type === type).map((c) => (
+          {categories.filter((c) => c.type === type && !c.hidden).map((c) => (
             <button key={c.id} disabled={!cents} class={tx?.categoryId === c.id ? 'cat sel' : 'cat'} onClick={() => save(c.id)}>
               <span>{c.emoji}</span>{c.name}
             </button>
           ))}
+          {!adding && (
+            <button class="cat new" onClick={() => setAdding(true)}><span>＋</span>{t.newCategory}</button>
+          )}
         </div>
+        {adding && (
+          <div class="new-cat">
+            <div class="emojis">
+              {EMOJIS.map((e) => (
+                <button key={e} class={e === newEmoji ? 'on' : ''} onClick={() => setNewEmoji(e)}>{e}</button>
+              ))}
+            </div>
+            <input placeholder={t.categoryName} value={newName} maxLength={16} autoFocus
+              onInput={(e) => setNewName((e.target as HTMLInputElement).value)}
+              onKeyDown={(e) => e.key === 'Enter' && addCategory()} />
+            <div class="carry-actions">
+              <button class="primary" disabled={!newName.trim()} onClick={addCategory}>
+                {newEmoji} {cents ? t.addAndSave : t.addCategory}
+              </button>
+              <button onClick={() => setAdding(false)}>{t.cancel}</button>
+            </div>
+          </div>
+        )}
         {tx && (
           <button class="wide danger" onClick={() => props.onDelete(tx)}>{t.delete}</button>
         )}

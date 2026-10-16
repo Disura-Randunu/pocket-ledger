@@ -12,6 +12,12 @@ describe('db', () => {
     expect((await store.listMonth('2026-10')).map((t) => t.id)).toEqual(['a']);
   });
 
+  it('lists custom categories before Other', async () => {
+    await store.saveCategory({ id: 'c-1', name: 'Rent', emoji: '🏠', type: 'expense' });
+    const ids = (await store.listCategories()).filter((c) => c.type === 'expense').map((c) => c.id);
+    expect(ids.slice(-2)).toEqual(['c-1', 'other']);
+  });
+
   it('seeds default categories and keeps settings', async () => {
     expect((await store.listCategories()).length).toBeGreaterThan(5);
     await store.setSetting('currency', '€');

@@ -46,11 +46,17 @@ export async function deleteTx(id: string): Promise<void> {
 
 /** Categories in the default order, with any user-added ones after them. */
 export async function listCategories(): Promise<Category[]> {
+  // Built-ins first, then the user's own (oldest first), then "Other" last.
   const order = (c: Category) => {
+    if (c.id === 'other' || c.id === 'other-in') return 1000;
     const i = DEFAULT_CATEGORIES.findIndex((d) => d.id === c.id);
     return i === -1 ? DEFAULT_CATEGORIES.length : i;
   };
-  return (await db()).getAll('categories').then((cs) => cs.sort((a, b) => order(a) - order(b)));
+  return (await db()).getAll('categories').then((cs) => cs.sort((a, b) => order(a) - order(b) || a.id.localeCompare(b.id)));
+}
+
+export async function saveCategory(c: Category): Promise<void> {
+  await (await db()).put('categories', c);
 }
 
 export async function getSetting<T>(key: string, fallback: T): Promise<T> {

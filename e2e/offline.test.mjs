@@ -97,7 +97,9 @@ try {
   await page.click('.list li:has-text("Lunch")');
   await page.click('button:text-is("Delete")');
   await page.locator('.toast').waitFor();
-  assert(!(await page.locator('.list li:has-text("Lunch")').count()), 'delete is instant');
+  await page.locator('.list li:has-text("Lunch")').waitFor({ state: 'detached', timeout: 2000 });
+  await page.waitForTimeout(300);
+  assert(!(await page.locator('.list li:has-text("Lunch")').count()), 'delete is instant and stays deleted');
   await page.click('.toast button:text-is("Undo")');
   await page.locator('.list li:has-text("Lunch")').waitFor();
   assert(true, 'Undo restores a deleted entry');
@@ -106,6 +108,28 @@ try {
   assert(true, 'a past month still offers a quiet way to carry later');
   await page.click('button[aria-label="Next month"]');
   await page.locator('h1:text-is("October 2026")').waitFor();
+
+  // Custom category: create it from the entry sheet and save in the same tap.
+  await page.click('button[aria-label="Add"]');
+  for (const k of '2500') await page.click(`.keypad button:text-is("${k}")`);
+  await page.click('.cat.new');
+  await page.click('.emojis button:text-is("🏠")');
+  await page.fill('.new-cat input', 'Rent');
+  await page.screenshot({ path: 'e2e/new-category.png' });
+  await page.click('.new-cat button:has-text("Add and save")');
+  await page.locator('.list li:has-text("Rent")').waitFor();
+  assert((await text('spent')) === 'Rs. 3,750.00', 'new category is created and the entry saved in one tap');
+  await page.click('button[aria-label="Add"]');
+  assert(await page.locator('.cat:has-text("Rent")').isVisible(), 'new category appears in the grid');
+  await page.click('.sheet-bg', { position: { x: 10, y: 10 } });
+  await page.click('button[aria-label="Settings"]');
+  await page.click('.chip:has-text("Rent")');
+  await page.locator('.chip').waitFor({ state: 'detached' });
+  await page.click('.sheet button.ghost');
+  assert(await page.locator('.list li:has-text("Rent")').isVisible(), 'removing a category keeps past entries');
+  await page.click('button[aria-label="Add"]');
+  assert(!(await page.locator('.cat:has-text("Rent")').count()), 'removed category leaves the grid');
+  await page.click('.sheet-bg', { position: { x: 10, y: 10 } });
   await page.click('button[aria-label="Settings"]');
   await page.click('button:text-is("සිංහල")');
   await page.screenshot({ path: 'e2e/settings-si.png' });
