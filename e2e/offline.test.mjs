@@ -80,7 +80,27 @@ try {
 
   await page.click('.list li:has-text("September balance")');
   await page.locator('[data-testid=carried]').waitFor({ state: 'detached' });
+  await page.click('.toast button:text-is("Undo")');
+  await page.locator('[data-testid=carried]:text-is("Rs. 48,500.00")').waitFor();
+  assert(true, 'Undo brings a removed carry-over back');
+
+  await page.click('.list li:has-text("September balance")');
+  await page.locator('[data-testid=carried]').waitFor({ state: 'detached' });
   assert(!(await page.locator('.carry').count()), 'removing it does not nag again');
+  await page.screenshot({ path: 'e2e/carry-removed.png' });
+  await page.click('.carry-link:has-text("Bring in September balance (Rs. 48,500.00)")');
+  await page.locator('[data-testid=carried]:text-is("Rs. 48,500.00")').waitFor();
+  assert(true, 'a quiet link on the same screen brings it back later');
+  await page.click('.list li:has-text("September balance")');
+  await page.locator('[data-testid=carried]').waitFor({ state: 'detached' });
+
+  await page.click('.list li:has-text("Lunch")');
+  await page.click('button:text-is("Delete")');
+  await page.locator('.toast').waitFor();
+  assert(!(await page.locator('.list li:has-text("Lunch")').count()), 'delete is instant');
+  await page.click('.toast button:text-is("Undo")');
+  await page.locator('.list li:has-text("Lunch")').waitFor();
+  assert(true, 'Undo restores a deleted entry');
   await page.click('button[aria-label="Previous month"]');
   await page.locator('.carry-link:has-text("Carry Rs. 48,500.00 into October")').waitFor();
   assert(true, 'a past month still offers a quiet way to carry later');

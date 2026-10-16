@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import * as store from './db';
 import { dayLabel, detectLang, monthName, monthTitle, STRINGS, type Lang, type Strings } from './i18n';
 import {
@@ -30,6 +30,8 @@ export function App() {
   const [prevNet, setPrevNet] = useState(0);
   const [carriedOut, setCarriedOut] = useState(true);
   const [dismissed, setDismissed] = useState<string[]>([]);
+  const [deleted, setDeleted] = useState<Tx | null>(null);
+  const undoTimer = useRef<number>();
   const t = STRINGS[lang];
 
   const prev = shiftMonth(month, -1);
@@ -56,10 +58,28 @@ export function App() {
     await refresh();
   }
 
-  async function dismissCarry(from: string) {
-    const list = [...dismissed, from];
+  async function setCarryDismissed(from: string, on: boolean) {
+    const list = on ? [...dismissed, from] : dismissed.filter((m) => m !== from);
     setDismissed(list);
     await store.setSetting('carryDismissed', list);
+  }
+
+  /** Deletes right away and offers Undo for a few seconds instead of asking first. */
+  async function remove(tx: Tx) {
+    await store.deleteTx(tx.id);
+    if (tx.categoryId === CARRY) await setCarryDismissed(prev, true);
+    setDeleted(tx);
+    clearTimeout(undoTimer.current);
+    undoTimer.current = window.setTimeout(() => setDeleted(null), 6000);
+    await refresh();
+  }
+
+  async function undoDelete() {
+    if (!deleted) return;
+    await store.saveTx(deleted);
+    if (deleted.categoryId === CARRY) await setCarryDismissed(prev, false);
+    setDeleted(null);
+    await refresh();
   }
 
   useEffect(() => {
@@ -137,9 +157,13 @@ export function App() {
           <p>{t.carryPrompt(monthName(prev, t), money(prevNet), monthName(month, t))}</p>
           <div class="carry-actions">
             <button class="primary" onClick={() => carryOver(prev, prevNet)}>{t.carryYes}</button>
-            <button onClick={() => dismissCarry(prev)}>{t.carryNo}</button>
+            <button onClick={() => setCarryDismissed(prev, true)}>{t.carryNo}</button>
           </div>
         </section>
+      )}
+
+      {!carryIn && prevNet !== 0 && dismissed.includes(prev) && (
+        <button class="carry-link" onClick={() => carryOver(prev, prevNet)}>↪︎ {t.carryBack(monthName(prev, t), money(prevNet))}</button>
       )}
 
       {isPast && !carriedOut && s.net !== 0 && (
@@ -169,10 +193,7 @@ export function App() {
         {txs.map((tx) => (
           <li key={tx.id} onClick={async () => {
             if (tx.categoryId !== CARRY) return setEditing(tx);
-            if (!confirm(t.removeCarry)) return;
-            await store.deleteTx(tx.id);
-            await dismissCarry(prev);
-            await refresh();
+            if (confirm(t.removeCarry)) await remove(tx);
           }}>
             <span class="emoji">{tx.categoryId === CARRY ? CARRY_CATEGORY.emoji : cat(tx.categoryId)?.emoji ?? '•'}</span>
             <span class="what">
@@ -184,6 +205,13 @@ export function App() {
         ))}
       </ul>
 
+      {deleted && (
+        <div class="toast" role="status">
+          <span>{t.deleted}</span>
+          <button onClick={undoDelete}>{t.undo}</button>
+        </div>
+      )}
+
       <button class="fab" aria-label={t.add} onClick={() => setEditing('new')}>+</button>
 
       {editing && (
@@ -194,6 +222,7 @@ export function App() {
           t={t}
           currency={currency}
           onClose={() => setEditing(null)}
+          onDelete={async (tx) => { setEditing(null); await remove(tx); }}
           onSaved={async (date) => {
             setEditing(null);
             navigator.storage?.persist?.();
@@ -260,7 +289,7 @@ const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', '⌫'];
 
 function Editor(props: {
   tx: Tx | null; month: string; categories: Category[]; currency: string; t: Strings;
-  onClose: () => void; onSaved: (date: string) => void;
+  onClose: () => void; onSaved: (date: string) => void; onDelete: (tx: Tx) => void;
 }) {
   const { tx, categories, currency, t } = props;
   const today = todayISO();
@@ -309,9 +338,7 @@ function Editor(props: {
           ))}
         </div>
         {tx && (
-          <button class="wide danger" onClick={async () => {
-            if (confirm(t.confirmDelete)) { await store.deleteTx(tx.id); props.onSaved(tx.date); }
-          }}>{t.delete}</button>
+          <button class="wide danger" onClick={() => props.onDelete(tx)}>{t.delete}</button>
         )}
       </div>
     </div>

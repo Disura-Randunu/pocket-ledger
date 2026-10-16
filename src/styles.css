@@ -92,3 +92,8 @@ main { max-width: 520px; margin: 0 auto; padding: max(12px, env(safe-area-inset-
 .carry-actions .primary { background: var(--accent); color: #fff; font-weight: 600; }
 @media (prefers-color-scheme: dark) { .carry-actions .primary { color: #04201d; } }
 .carry-link { display: block; width: 100%; padding: 4px 4px 12px; text-align: left; color: var(--accent); font-size: 14px; }
+
+.toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: max(100px, calc(env(safe-area-inset-bottom) + 84px));
+  display: flex; align-items: center; gap: 16px; padding: 10px 10px 10px 16px; border-radius: 14px;
+  background: var(--text); color: var(--bg); box-shadow: 0 6px 20px rgba(0,0,0,.2); z-index: 5; }
+.toast button { color: var(--accent-soft); font-weight: 700; padding: 6px 10px; }
