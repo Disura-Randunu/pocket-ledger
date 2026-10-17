@@ -2,7 +2,9 @@ const CACHE = 'ledger-__VERSION__';
 const FILES = __FILES__;
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(CACHE).then((c) => c.addAll(FILES)).then(() => self.skipWaiting()));
+  event.waitUntil(// cache: 'reload' skips the browser's HTTP cache, which can still hold the previous index.html for a few
+  // minutes after a deploy. Precaching that stale page alongside new files left a blank screen.
+  caches.open(CACHE).then((c) => c.addAll(FILES.map((f) => new Request(f, { cache: 'reload' })))).then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', (event) => {
