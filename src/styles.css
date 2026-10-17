@@ -111,3 +111,26 @@ main { max-width: 520px; margin: 0 auto; padding: max(12px, env(safe-area-inset-
 .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
 .chip { padding: 6px 10px; border-radius: 999px; background: var(--card); font-size: 14px; }
 .chip b { color: var(--muted); margin-left: 4px; }
+
+.accounts { display: flex; gap: 8px; overflow-x: auto; margin: -2px -16px 10px; padding: 2px 16px; scrollbar-width: none; }
+.accounts::-webkit-scrollbar { display: none; }
+.acct { flex: none; display: flex; flex-direction: column; align-items: flex-start; padding: 8px 12px; border-radius: 14px; background: var(--card); border: 1.5px solid transparent; }
+.acct span { font-size: 13px; color: var(--muted); white-space: nowrap; }
+.acct b { font-size: 15px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.acct.on { border-color: var(--accent); }
+.fix { display: flex; gap: 8px; margin-bottom: 12px; }
+.fix input { flex: 1; min-width: 0; padding: 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); }
+.fix button { padding: 10px 16px; border-radius: 10px; background: var(--accent); color: #fff; font-weight: 600; }
+.fix button:disabled { opacity: .5; }
+.from { display: flex; align-items: center; gap: 6px; overflow-x: auto; margin-top: 10px; scrollbar-width: none; }
+.from > span { flex: none; font-size: 13px; color: var(--muted); }
+.from button { flex: none; padding: 6px 10px; border-radius: 999px; background: var(--card); font-size: 14px; border: 1.5px solid transparent; }
+.from button.on { border-color: var(--accent); background: var(--accent-soft); }
+.acct-list { background: var(--card); border-radius: 12px; margin: 6px 0 8px; }
+.acct-row { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+.acct-row:last-child { border-bottom: 0; }
+.acct-row span { flex: 1; }
+.acct-row b { font-variant-numeric: tabular-nums; }
+.acct-row button { color: var(--muted); font-size: 18px; padding: 0 4px; }
+.add-acct { color: var(--accent); }
+.new-cat input + input { margin-top: 0; }

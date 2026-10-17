@@ -6,9 +6,10 @@ A tiny offline-first money tracker that runs as an installable web app (PWA). It
 - The monthly view shows what you spent, your income, your net total and a breakdown by category.
 - You can add your own categories with the "+ New" tile when adding an entry: pick an emoji, type a name, and you're done. You can remove them in Settings, and past entries keep their category.
 - When a month ends with money left over (or a shortfall), the next month offers a one-tap carry-over. The carried amount stays correct if you edit the old month later, and tapping it lets you remove it.
+- Accounts are optional. In Settings, add a bank account or wallet and say how much is in it now. Once you have two or more accounts, the home screen shows each balance, the entry sheet asks which account the money came from (and remembers your last choice), and tapping a balance shows only that account's entries. "Fix balance" makes an account match reality without counting the difference as spending. Monthly carry-over is hidden when you use accounts, because balances already carry on by themselves.
 - You can save a JSON backup and restore it, or export a CSV spreadsheet.
 - It works in Sinhala or English. It follows the phone's language, and you can switch in Settings.
-- The whole app is about 14 KB gzipped and works fully offline after the first visit.
+- The whole app is about 18 KB gzipped and works fully offline after the first visit.
 
 ## Develop
 

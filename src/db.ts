@@ -1,5 +1,5 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
-import { DEFAULT_CATEGORIES, type Backup, type Category, type Tx } from './money';
+import { DEFAULT_ACCOUNTS, DEFAULT_CATEGORIES, type Account, type Backup, type Category, type Tx } from './money';
 
 interface LedgerDB extends DBSchema {
   transactions: { key: string; value: Tx; indexes: { date: string } };
@@ -68,11 +68,24 @@ export async function setSetting(key: string, value: unknown): Promise<void> {
   await (await db()).put('settings', value, key);
 }
 
+export async function listAccounts(): Promise<Account[]> {
+  return getSetting('accounts', DEFAULT_ACCOUNTS);
+}
+
+export async function saveAccounts(accounts: Account[]): Promise<void> {
+  await setSetting('accounts', accounts);
+}
+
 /** Merges a backup in: same ids are overwritten, nothing is deleted. Returns the count imported. */
 export async function importBackup(b: Backup): Promise<number> {
   const tx = (await db()).transaction(['transactions', 'categories'], 'readwrite');
   for (const c of b.categories) tx.objectStore('categories').put(c);
   for (const t of b.transactions) tx.objectStore('transactions').put(t);
   await tx.done;
+  if (b.accounts?.length) {
+    const merged = new Map((await listAccounts()).map((a) => [a.id, a]));
+    for (const a of b.accounts) merged.set(a.id, a);
+    await saveAccounts([...merged.values()]);
+  }
   return b.transactions.length;
 }

@@ -11,6 +11,7 @@ export interface Tx {
   note: string;
   date: string; // YYYY-MM-DD
   createdAt: number;
+  accountId?: string; // missing means Cash
 }
 
 export interface Category {
@@ -43,6 +44,14 @@ export function parseCents(input: string): number | null {
   return cents > 0 && Number.isSafeInteger(cents) ? cents : null;
 }
 
+/** Like parseCents, but allows zero and a leading minus, for entering a balance. */
+export function parseBalance(input: string): number | null {
+  const clean = input.replace(/,/g, '').trim();
+  const neg = clean.startsWith('-');
+  const cents = clean.replace(/^-/, '') === '0' ? 0 : parseCents(clean.replace(/^-/, ''));
+  return cents === null ? null : neg ? -cents : cents;
+}
+
 export function formatCents(cents: number, symbol: string): string {
   const sign = cents < 0 ? '-' : '';
   const abs = Math.abs(cents);
@@ -68,6 +77,32 @@ export function shiftMonth(key: string, delta: number): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 
+export interface Account {
+  id: string;
+  name: string;
+  emoji: string;
+  start: number; // cents in it when the user added it
+  hidden?: boolean; // removed by the user; kept so past entries still show its name
+}
+
+export const CASH = 'cash';
+export const DEFAULT_ACCOUNTS: Account[] = [{ id: CASH, name: 'Cash', emoji: '💵', start: 0 }];
+export const accountOf = (t: Tx) => t.accountId ?? CASH;
+
+/** Category id for a correction that makes an account match reality. Not spending or income. */
+export const ADJUST = 'adjust';
+
+/** Each account's balance right now: what it started with plus everything ever logged to it. */
+export function balances(accounts: Account[], txs: Tx[]): Map<string, number> {
+  const out = new Map(accounts.map((a) => [a.id, a.start]));
+  for (const t of txs) {
+    if (t.categoryId === CARRY) continue; // carry-over is a monthly view, not real money moving
+    const id = accountOf(t);
+    out.set(id, (out.get(id) ?? 0) + (t.type === 'income' ? t.amount : -t.amount));
+  }
+  return out;
+}
+
 /** Category id for a balance carried in from the previous month. */
 export const CARRY = 'carry';
 
@@ -88,6 +123,7 @@ export function summarize(txs: Tx[]): Summary {
   let carried = 0;
   const totals = new Map<string, number>();
   for (const t of txs) {
+    if (t.categoryId === ADJUST) continue;
     if (t.categoryId === CARRY) {
       carried += t.type === 'income' ? t.amount : -t.amount;
     } else if (t.type === 'expense') {
@@ -107,16 +143,17 @@ function csvCell(value: string): string {
   return /[",\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
 }
 
-export function toCSV(txs: Tx[], categories: Category[]): string {
+export function toCSV(txs: Tx[], categories: Category[], accounts: Account[] = []): string {
   const names = new Map(categories.map((c) => [c.id, c.name]));
+  const accts = new Map(accounts.map((a) => [a.id, a.name]));
   const rows = [...txs]
     .sort((a, b) => a.date.localeCompare(b.date) || a.createdAt - b.createdAt)
     .map((t) =>
-      [t.date, t.type, names.get(t.categoryId) ?? t.categoryId, (t.amount / 100).toFixed(2), t.note]
+      [t.date, t.type, names.get(t.categoryId) ?? t.categoryId, accts.get(accountOf(t)) ?? accountOf(t), (t.amount / 100).toFixed(2), t.note]
         .map(csvCell)
         .join(','),
     );
-  return ['date,type,category,amount,note', ...rows].join('\n') + '\n';
+  return ['date,type,category,account,amount,note', ...rows].join('\n') + '\n';
 }
 
 export interface Backup {
@@ -125,6 +162,7 @@ export interface Backup {
   exportedAt: string;
   currency: string;
   categories: Category[];
+  accounts?: Account[];
   transactions: Tx[];
 }
 

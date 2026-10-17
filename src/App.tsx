@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import * as store from './db';
 import { dayLabel, detectLang, monthName, monthTitle, STRINGS, type Lang, type Strings } from './i18n';
 import {
-  CARRY, carryId, DEFAULT_CURRENCY, formatCents, monthKey, parseCents, shiftMonth, summarize, toCSV, todayISO, validateBackup,
-  type Backup, type Category, type Tx, type TxType,
+  accountOf, ADJUST, balances, CARRY, carryId, CASH, DEFAULT_ACCOUNTS, DEFAULT_CURRENCY, formatCents, parseBalance, monthKey, parseCents, shiftMonth, summarize, toCSV, todayISO, validateBackup,
+  type Account, type Backup, type Category, type Tx, type TxType,
 } from './money';
 
 const BACKUP_REMINDER_DAYS = 30;
@@ -32,6 +32,13 @@ export function App() {
   const [dismissed, setDismissed] = useState<string[]>([]);
   const [deleted, setDeleted] = useState<Tx | null>(null);
   const undoTimer = useRef<number>();
+  const [allTxs, setAllTxs] = useState<Tx[]>([]);
+  const [accounts, setAccounts] = useState<Account[]>(DEFAULT_ACCOUNTS);
+  const [lastAccount, setLastAccount] = useState(CASH);
+  const [filter, setFilter] = useState<string | null>(null);
+  const [fixing, setFixing] = useState(false);
+  const [fixValue, setFixValue] = useState('');
+  const [addingAccount, setAddingAccount] = useState(false);
   const t = STRINGS[lang];
 
   const prev = shiftMonth(month, -1);
@@ -49,6 +56,7 @@ export function App() {
     const [list, all, out] = await Promise.all([store.listMonth(month), store.listAll(), store.getTx(carryId(month))]);
     setTxs(list);
     setHasAny(all.length > 0);
+    setAllTxs(all);
     setPrevNet(prevBalance);
     setCarriedOut(!!out);
   }
@@ -89,6 +97,8 @@ export function App() {
       setLastBackupAt(await store.getSetting('lastBackupAt', 0));
       setLang(await store.getSetting<Lang>('lang', detectLang()));
       setDismissed(await store.getSetting<string[]>('carryDismissed', []));
+      setAccounts(await store.listAccounts());
+      setLastAccount(await store.getSetting('lastAccount', CASH));
     })();
   }, []);
 
@@ -97,11 +107,39 @@ export function App() {
 
   const cat = (id: string) => localize(categories.find((c) => c.id === id), t);
   const carryIn = txs.find((x) => x.categoryId === CARRY);
-  const showCarryPrompt = !carryIn && prevNet !== 0 && !dismissed.includes(prev);
+  const shownAccounts = accounts.filter((a) => !a.hidden);
+  // Accounts stay invisible until there are two; then balances roll over by themselves, so carry-over steps aside.
+  const multi = shownAccounts.length >= 2;
+  const acctName = (a?: Account) => (!a ? '' : a.id === CASH ? t.cash : a.name);
+  const acct = (id: string) => accounts.find((a) => a.id === id);
+  const bal = balances(accounts, allTxs);
+  const shownTxs = filter ? txs.filter((x) => accountOf(x) === filter && x.categoryId !== CARRY) : txs;
+  const showCarryPrompt = !multi && !carryIn && prevNet !== 0 && !dismissed.includes(prev);
   const isPast = month < monthKey(todayISO());
   const s = summarize(txs);
   const money = (c: number) => formatCents(c, currency);
   const needsBackup = hasAny && Date.now() - lastBackupAt > BACKUP_REMINDER_DAYS * 86400000;
+
+  async function updateAccounts(list: Account[]) {
+    setAccounts(list);
+    await store.saveAccounts(list);
+  }
+
+  /** Records the difference between what the app thinks and what's really there. */
+  async function fixBalance(id: string) {
+    const actual = parseBalance(fixValue);
+    if (actual === null) return;
+    const diff = actual - (bal.get(id) ?? 0);
+    if (diff !== 0) {
+      await store.saveTx({
+        id: crypto.randomUUID(), amount: Math.abs(diff), type: diff > 0 ? 'income' : 'expense',
+        categoryId: ADJUST, note: '', date: todayISO(), createdAt: Date.now(), accountId: id,
+      });
+    }
+    setFixing(false);
+    setFixValue('');
+    await refresh();
+  }
 
   async function markBackedUp() {
     const now = Date.now();
@@ -112,20 +150,21 @@ export function App() {
   async function exportJSON() {
     const backup: Backup = {
       app: 'pocket-ledger', version: 1, exportedAt: new Date().toISOString(),
-      currency, categories, transactions: await store.listAll(),
+      currency, categories, accounts, transactions: await store.listAll(),
     };
     download(`pocket-ledger-${todayISO()}.json`, JSON.stringify(backup, null, 1), 'application/json');
     await markBackedUp();
   }
 
   async function exportCSV() {
-    download(`pocket-ledger-${todayISO()}.csv`, toCSV(await store.listAll(), [...categories, CARRY_CATEGORY].map((c) => localize(c, t)!)), 'text/csv');
+    download(`pocket-ledger-${todayISO()}.csv`, toCSV(await store.listAll(), [...categories, CARRY_CATEGORY].map((c) => localize(c, t)!), accounts.map((a) => ({ ...a, name: acctName(a) }))), 'text/csv');
   }
 
   async function importJSON(file: File) {
     try {
       const n = await store.importBackup(validateBackup(JSON.parse(await file.text())));
       setCategories(await store.listCategories());
+      setAccounts(await store.listAccounts());
       await refresh();
       alert(t.imported(n));
     } catch (e) {
@@ -152,6 +191,28 @@ export function App() {
         </div>
       </section>
 
+      {multi && (
+        <div class="accounts">
+          {shownAccounts.map((a) => (
+            <button key={a.id} class={filter === a.id ? 'acct on' : 'acct'} onClick={() => { setFilter(filter === a.id ? null : a.id); setFixing(false); }}>
+              <span>{a.emoji} {acctName(a)}</span>
+              <b data-testid={`bal-${a.id}`} class={(bal.get(a.id) ?? 0) < 0 ? 'neg' : ''}>{money(bal.get(a.id) ?? 0)}</b>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {multi && filter && (fixing ? (
+        <div class="fix">
+          <input inputMode="decimal" autoFocus placeholder={t.actualBalance(acctName(acct(filter)))} value={fixValue}
+            onInput={(e) => setFixValue((e.target as HTMLInputElement).value)}
+            onKeyDown={(e) => e.key === 'Enter' && fixBalance(filter)} />
+          <button disabled={parseBalance(fixValue) === null} onClick={() => fixBalance(filter)}>{t.save}</button>
+        </div>
+      ) : (
+        <button class="carry-link" onClick={() => setFixing(true)}>⚖️ {t.fixBalance}</button>
+      ))}
+
       {showCarryPrompt && (
         <section class="carry">
           <p>{t.carryPrompt(monthName(prev, t), money(prevNet), monthName(month, t))}</p>
@@ -162,11 +223,11 @@ export function App() {
         </section>
       )}
 
-      {!carryIn && prevNet !== 0 && dismissed.includes(prev) && (
+      {!multi && !carryIn && prevNet !== 0 && dismissed.includes(prev) && (
         <button class="carry-link" onClick={() => carryOver(prev, prevNet)}>↪︎ {t.carryBack(monthName(prev, t), money(prevNet))}</button>
       )}
 
-      {isPast && !carriedOut && s.net !== 0 && (
+      {!multi && isPast && !carriedOut && s.net !== 0 && (
         <button class="carry-link" onClick={() => carryOver(month, s.net)}>↪︎ {t.carryLink(money(s.net), monthName(next, t))}</button>
       )}
 
@@ -189,16 +250,17 @@ export function App() {
       )}
 
       <ul class="list">
-        {txs.length === 0 && <li class="empty">{t.empty}</li>}
-        {txs.map((tx) => (
+        {shownTxs.length === 0 && <li class="empty">{t.empty}</li>}
+        {shownTxs.map((tx) => (
           <li key={tx.id} onClick={async () => {
-            if (tx.categoryId !== CARRY) return setEditing(tx);
-            if (confirm(t.removeCarry)) await remove(tx);
+            if (tx.categoryId === CARRY) { if (confirm(t.removeCarry)) await remove(tx); return; }
+            if (tx.categoryId === ADJUST) { if (confirm(t.removeFix)) await remove(tx); return; }
+            setEditing(tx);
           }}>
-            <span class="emoji">{tx.categoryId === CARRY ? CARRY_CATEGORY.emoji : cat(tx.categoryId)?.emoji ?? '•'}</span>
+            <span class="emoji">{tx.categoryId === CARRY ? CARRY_CATEGORY.emoji : tx.categoryId === ADJUST ? '⚖️' : cat(tx.categoryId)?.emoji ?? '•'}</span>
             <span class="what">
-              <span>{tx.categoryId === CARRY ? t.carriedFrom(monthName(prev, t)) : tx.note || cat(tx.categoryId)?.name || t.categories.other}</span>
-              <small>{dayLabel(tx.date, t)}</small>
+              <span>{tx.categoryId === CARRY ? t.carriedFrom(monthName(prev, t)) : tx.categoryId === ADJUST ? t.balanceFix : tx.note || cat(tx.categoryId)?.name || t.categories.other}</span>
+              <small>{dayLabel(tx.date, t)}{multi && tx.categoryId !== CARRY ? ` · ${acct(accountOf(tx))?.emoji ?? ''} ${acctName(acct(accountOf(tx)))}` : ''}</small>
             </span>
             <span class={tx.type === 'income' ? 'amt pos' : 'amt'}>{tx.type === 'income' ? '+' : '−'}{money(tx.amount)}</span>
           </li>
@@ -224,8 +286,12 @@ export function App() {
           onClose={() => setEditing(null)}
           onDelete={async (tx) => { setEditing(null); await remove(tx); }}
           onCategoryAdded={async () => setCategories(await store.listCategories())}
-          onSaved={async (date) => {
+          accounts={multi ? shownAccounts.map((a) => ({ ...a, name: acctName(a) })) : []}
+          defaultAccount={filter ?? (shownAccounts.some((a) => a.id === lastAccount) ? lastAccount : CASH)}
+          onSaved={async (date, accountId) => {
             setEditing(null);
+            setLastAccount(accountId);
+            store.setSetting('lastAccount', accountId);
             navigator.storage?.persist?.();
             if (monthKey(date) !== month) setMonth(monthKey(date)); else await refresh();
           }}
@@ -252,6 +318,32 @@ export function App() {
                 store.setSetting('currency', v);
               }} />
             </label>
+            <div class="mine">
+              <span>{t.accounts}</span>
+              <div class="acct-list">
+                {shownAccounts.map((a) => (
+                  <div class="acct-row" key={a.id}>
+                    <span>{a.emoji} {acctName(a)}</span>
+                    <b>{money(bal.get(a.id) ?? 0)}</b>
+                    {a.id !== CASH && (
+                      <button aria-label={t.removeAccount(a.name)} onClick={async () => {
+                        if (!confirm(t.removeAccount(a.name))) return;
+                        if (filter === a.id) setFilter(null);
+                        await updateAccounts(accounts.map((x) => (x.id === a.id ? { ...x, hidden: true } : x)));
+                      }}>×</button>
+                    )}
+                  </div>
+                ))}
+              </div>
+              {addingAccount ? (
+                <NewAccount t={t} onCancel={() => setAddingAccount(false)} onAdd={async (a) => {
+                  await updateAccounts([...accounts, a]);
+                  setAddingAccount(false);
+                }} />
+              ) : (
+                <button class="chip add-acct" onClick={() => setAddingAccount(true)}>＋ {t.addAccount}</button>
+              )}
+            </div>
             {categories.some((c) => c.id.startsWith('c-') && !c.hidden) && (
               <div class="mine">
                 <span>{t.yourCategories}</span>
@@ -302,12 +394,39 @@ function carryTx(from: string, balance: number): Tx {
 
 const EMOJIS = ['🏠', '🛒', '⛽', '📱', '👕', '🎓', '🍼', '🐶', '✈️', '💇', '🎁', '🙏', '🍺', '🎬', '💰', '⭐'];
 
+const ACCOUNT_EMOJIS = ['🏦', '💳', '📱', '👛', '💵', '🏧'];
+
+function NewAccount(props: { t: Strings; onAdd: (a: Account) => void; onCancel: () => void }) {
+  const { t } = props;
+  const [emoji, setEmoji] = useState(ACCOUNT_EMOJIS[0]);
+  const [name, setName] = useState('');
+  const [amount, setAmount] = useState('');
+  const start = amount.trim() ? parseBalance(amount) : 0;
+  const ok = !!name.trim() && start !== null;
+  const add = () => ok && props.onAdd({ id: `a-${Date.now()}`, name: name.trim(), emoji, start: start! });
+  return (
+    <div class="new-cat">
+      <div class="emojis">
+        {ACCOUNT_EMOJIS.map((e) => <button key={e} class={e === emoji ? 'on' : ''} onClick={() => setEmoji(e)}>{e}</button>)}
+      </div>
+      <input placeholder={t.accountName} value={name} maxLength={16} autoFocus onInput={(e) => setName((e.target as HTMLInputElement).value)} />
+      <input placeholder={t.balanceNow} inputMode="decimal" value={amount}
+        onInput={(e) => setAmount((e.target as HTMLInputElement).value)} onKeyDown={(e) => e.key === 'Enter' && add()} />
+      <div class="carry-actions">
+        <button class="primary" disabled={!ok} onClick={add}>{emoji} {t.addAccount}</button>
+        <button onClick={props.onCancel}>{t.cancel}</button>
+      </div>
+    </div>
+  );
+}
+
 const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', '⌫'];
 
 function Editor(props: {
   tx: Tx | null; month: string; categories: Category[]; currency: string; t: Strings;
-  onClose: () => void; onSaved: (date: string) => void; onDelete: (tx: Tx) => void;
+  onClose: () => void; onSaved: (date: string, accountId: string) => void; onDelete: (tx: Tx) => void;
   onCategoryAdded: () => Promise<void>;
+  accounts: Account[]; defaultAccount: string;
 }) {
   const { tx, categories, currency, t } = props;
   const today = todayISO();
@@ -316,6 +435,7 @@ function Editor(props: {
   const [date, setDate] = useState(tx?.date ?? (monthKey(today) === props.month ? today : `${props.month}-01`));
   const [note, setNote] = useState(tx?.note ?? '');
   const cents = parseCents(amount);
+  const [accountId, setAccountId] = useState(tx ? accountOf(tx) : props.defaultAccount);
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState('');
   const [newEmoji, setNewEmoji] = useState(EMOJIS[0]);
@@ -341,9 +461,9 @@ function Editor(props: {
     if (!cents) return;
     await store.saveTx({
       id: tx?.id ?? crypto.randomUUID(), amount: cents, type, categoryId,
-      note: note.trim(), date, createdAt: tx?.createdAt ?? Date.now(),
+      note: note.trim(), date, createdAt: tx?.createdAt ?? Date.now(), accountId,
     });
-    props.onSaved(date);
+    props.onSaved(date, accountId);
   }
 
   return (
@@ -361,6 +481,14 @@ function Editor(props: {
           <input type="date" value={date} onInput={(e) => setDate((e.target as HTMLInputElement).value || today)} />
           <input placeholder={t.note} value={note} maxLength={60} onInput={(e) => setNote((e.target as HTMLInputElement).value)} />
         </div>
+        {props.accounts.length > 1 && (
+          <div class="from">
+            <span>{type === 'income' ? t.to : t.from}</span>
+            {props.accounts.map((a) => (
+              <button key={a.id} class={a.id === accountId ? 'on' : ''} onClick={() => setAccountId(a.id)}>{a.emoji} {a.name}</button>
+            ))}
+          </div>
+        )}
         <p class="hint">{cents ? t.tapToSave : t.enterAmount}</p>
         <div class="cats">
           {categories.filter((c) => c.type === type && !c.hidden).map((c) => (
