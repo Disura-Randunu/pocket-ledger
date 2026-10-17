@@ -1,7 +1,7 @@
 /** Sri Lankan Rupees. Changeable in Settings. */
 export const DEFAULT_CURRENCY = 'Rs. ';
 
-export type TxType = 'expense' | 'income';
+export type TxType = 'expense' | 'income' | 'transfer';
 
 export interface Tx {
   id: string;
@@ -11,7 +11,8 @@ export interface Tx {
   note: string;
   date: string; // YYYY-MM-DD
   createdAt: number;
-  accountId?: string; // missing means Cash
+  accountId?: string; // missing means Cash. For a transfer, where the money left.
+  toAccountId?: string; // transfers only: where the money arrived
 }
 
 export interface Category {
@@ -89,6 +90,9 @@ export const CASH = 'cash';
 export const DEFAULT_ACCOUNTS: Account[] = [{ id: CASH, name: 'Cash', emoji: '💵', start: 0 }];
 export const accountOf = (t: Tx) => t.accountId ?? CASH;
 
+/** Category id for money moved between two accounts. Not spending or income. */
+export const TRANSFER = 'transfer';
+
 /** Category id for a correction that makes an account match reality. Not spending or income. */
 export const ADJUST = 'adjust';
 
@@ -98,6 +102,11 @@ export function balances(accounts: Account[], txs: Tx[]): Map<string, number> {
   for (const t of txs) {
     if (t.categoryId === CARRY) continue; // carry-over is a monthly view, not real money moving
     const id = accountOf(t);
+    if (t.type === 'transfer') {
+      out.set(id, (out.get(id) ?? 0) - t.amount);
+      if (t.toAccountId) out.set(t.toAccountId, (out.get(t.toAccountId) ?? 0) + t.amount);
+      continue;
+    }
     out.set(id, (out.get(id) ?? 0) + (t.type === 'income' ? t.amount : -t.amount));
   }
   return out;
@@ -123,7 +132,7 @@ export function summarize(txs: Tx[]): Summary {
   let carried = 0;
   const totals = new Map<string, number>();
   for (const t of txs) {
-    if (t.categoryId === ADJUST) continue;
+    if (t.categoryId === ADJUST || t.type === 'transfer') continue;
     if (t.categoryId === CARRY) {
       carried += t.type === 'income' ? t.amount : -t.amount;
     } else if (t.type === 'expense') {
@@ -146,10 +155,12 @@ function csvCell(value: string): string {
 export function toCSV(txs: Tx[], categories: Category[], accounts: Account[] = []): string {
   const names = new Map(categories.map((c) => [c.id, c.name]));
   const accts = new Map(accounts.map((a) => [a.id, a.name]));
+  const acctName = (id: string) => accts.get(id) ?? id;
+  const acctLabel = (t: Tx) => (t.type === 'transfer' ? `${acctName(accountOf(t))} → ${acctName(t.toAccountId ?? '')}` : acctName(accountOf(t)));
   const rows = [...txs]
     .sort((a, b) => a.date.localeCompare(b.date) || a.createdAt - b.createdAt)
     .map((t) =>
-      [t.date, t.type, names.get(t.categoryId) ?? t.categoryId, accts.get(accountOf(t)) ?? accountOf(t), (t.amount / 100).toFixed(2), t.note]
+      [t.date, t.type, names.get(t.categoryId) ?? t.categoryId, acctLabel(t), (t.amount / 100).toFixed(2), t.note]
         .map(csvCell)
         .join(','),
     );
@@ -175,7 +186,7 @@ export function validateBackup(data: unknown): Backup {
   for (const t of b.transactions) {
     if (
       typeof t.id !== 'string' || !Number.isSafeInteger(t.amount) || t.amount <= 0 ||
-      (t.type !== 'expense' && t.type !== 'income') || !/^\d{4}-\d{2}-\d{2}$/.test(t.date)
+      (t.type !== 'expense' && t.type !== 'income' && !(t.type === 'transfer' && typeof t.toAccountId === 'string')) || !/^\d{4}-\d{2}-\d{2}$/.test(t.date)
     ) {
       throw new Error('invalid-tx');
     }

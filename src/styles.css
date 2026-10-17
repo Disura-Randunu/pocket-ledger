@@ -134,3 +134,6 @@ main { max-width: 520px; margin: 0 auto; padding: max(12px, env(safe-area-inset-
 .acct-row button { color: var(--muted); font-size: 18px; padding: 0 4px; }
 .add-acct { color: var(--accent); }
 .new-cat input + input { margin-top: 0; }
+.wide.primary { background: var(--accent); color: #fff; font-weight: 600; margin-top: 12px; }
+.wide.primary:disabled { opacity: .5; }
+@media (prefers-color-scheme: dark) { .wide.primary { color: #04201d; } }

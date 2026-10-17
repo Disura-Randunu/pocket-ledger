@@ -177,6 +177,32 @@ try {
   assert((await text('spent')) === spentAfterFix, 'a balance fix is not counted as spending');
   await page.click('.toast button:text-is("Undo")');
   await page.locator('.list li:has-text("Balance fix")').waitFor();
+
+  // Transfers: money moves between accounts without counting as spending or income.
+  const cash = page.locator('.acct:has-text("Cash") b');
+  const cashBefore = await cash.textContent();
+  const spentBeforeTransfer = await text('spent');
+  await page.click('button[aria-label="Add"]');
+  await page.click('.toggle button:text-is("Transfer")');
+  for (const k of '10000') await page.click(`.keypad button:text-is("${k}")`);
+  await page.click('.from:has-text("From") button:has-text("BOC")');
+  await page.click('.from:has-text("To") button:has-text("BOC")');
+  assert((await page.textContent('.from:has-text("From") button.on')).includes('Cash'), 'picking the same account swaps From and To');
+  await page.click('.from:has-text("From") button:has-text("BOC")');
+  await page.screenshot({ path: 'e2e/transfer.png' });
+  await page.click('button:has-text("Save transfer")');
+  await page.locator('.list li:has-text("BOC → Cash")').waitFor();
+  assert((await boc.textContent()) === 'Rs. 37,500.00', 'transfer takes money out of the source account');
+  const toNum = (s) => Number(s.replace('Rs.', '').replace(/[^\d.-]/g, ''));
+  assert(toNum(await cash.textContent()) - toNum(cashBefore) === 10000, 'transfer puts it into the other account');
+  assert((await text('spent')) === spentBeforeTransfer, 'a transfer is not spending');
+  await page.click('button[aria-label="Add"]');
+  assert((await page.textContent('.from button.on')).includes('BOC'), 'a transfer does not change the remembered account');
+  await page.click('.sheet-bg', { position: { x: 10, y: 10 } });
+  await page.click('.acct:has-text("Cash")');
+  assert((await page.textContent('.list li:has-text("BOC → Cash") .amt')).startsWith('+'), 'filtered to Cash, the transfer shows as money in');
+  await page.screenshot({ path: 'e2e/transfer-list.png' });
+  await page.click('.acct:has-text("Cash")');
   await page.click('button[aria-label="Settings"]');
   await page.click('button:text-is("සිංහල")');
   await page.screenshot({ path: 'e2e/settings-si.png' });

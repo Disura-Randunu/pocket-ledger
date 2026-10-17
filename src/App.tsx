@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import * as store from './db';
 import { dayLabel, detectLang, monthName, monthTitle, STRINGS, type Lang, type Strings } from './i18n';
 import {
-  accountOf, ADJUST, balances, CARRY, carryId, CASH, DEFAULT_ACCOUNTS, DEFAULT_CURRENCY, formatCents, parseBalance, monthKey, parseCents, shiftMonth, summarize, toCSV, todayISO, validateBackup,
+  accountOf, ADJUST, balances, CARRY, carryId, CASH, DEFAULT_ACCOUNTS, DEFAULT_CURRENCY, formatCents, parseBalance, monthKey, parseCents, shiftMonth, summarize, toCSV, todayISO, TRANSFER, validateBackup,
   type Account, type Backup, type Category, type Tx, type TxType,
 } from './money';
 
@@ -113,7 +113,7 @@ export function App() {
   const acctName = (a?: Account) => (!a ? '' : a.id === CASH ? t.cash : a.name);
   const acct = (id: string) => accounts.find((a) => a.id === id);
   const bal = balances(accounts, allTxs);
-  const shownTxs = filter ? txs.filter((x) => accountOf(x) === filter && x.categoryId !== CARRY) : txs;
+  const shownTxs = filter ? txs.filter((x) => (accountOf(x) === filter || x.toAccountId === filter) && x.categoryId !== CARRY) : txs;
   const showCarryPrompt = !multi && !carryIn && prevNet !== 0 && !dismissed.includes(prev);
   const isPast = month < monthKey(todayISO());
   const s = summarize(txs);
@@ -251,7 +251,17 @@ export function App() {
 
       <ul class="list">
         {shownTxs.length === 0 && <li class="empty">{t.empty}</li>}
-        {shownTxs.map((tx) => (
+        {shownTxs.map((tx) => tx.type === 'transfer' ? (
+          <li key={tx.id} onClick={() => setEditing(tx)}>
+            <span class="emoji">🔁</span>
+            <span class="what">
+              <span>{acctName(acct(accountOf(tx)))} → {acctName(acct(tx.toAccountId ?? ''))}</span>
+              <small>{dayLabel(tx.date, t)}{tx.note ? ` · ${tx.note}` : ''}</small>
+            </span>
+            {/* Seen from one account a transfer is money in or out; overall it is neither. */}
+            <span class={filter === tx.toAccountId ? 'amt pos' : 'amt'}>{filter ? (filter === tx.toAccountId ? '+' : '−') : ''}{money(tx.amount)}</span>
+          </li>
+        ) : (
           <li key={tx.id} onClick={async () => {
             if (tx.categoryId === CARRY) { if (confirm(t.removeCarry)) await remove(tx); return; }
             if (tx.categoryId === ADJUST) { if (confirm(t.removeFix)) await remove(tx); return; }
@@ -290,8 +300,10 @@ export function App() {
           defaultAccount={filter ?? (shownAccounts.some((a) => a.id === lastAccount) ? lastAccount : CASH)}
           onSaved={async (date, accountId) => {
             setEditing(null);
-            setLastAccount(accountId);
-            store.setSetting('lastAccount', accountId);
+            if (accountId) {
+              setLastAccount(accountId);
+              store.setSetting('lastAccount', accountId);
+            }
             navigator.storage?.persist?.();
             if (monthKey(date) !== month) setMonth(monthKey(date)); else await refresh();
           }}
@@ -424,7 +436,7 @@ const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', '⌫'];
 
 function Editor(props: {
   tx: Tx | null; month: string; categories: Category[]; currency: string; t: Strings;
-  onClose: () => void; onSaved: (date: string, accountId: string) => void; onDelete: (tx: Tx) => void;
+  onClose: () => void; onSaved: (date: string, accountId: string | null) => void; onDelete: (tx: Tx) => void;
   onCategoryAdded: () => Promise<void>;
   accounts: Account[]; defaultAccount: string;
 }) {
@@ -436,6 +448,9 @@ function Editor(props: {
   const [note, setNote] = useState(tx?.note ?? '');
   const cents = parseCents(amount);
   const [accountId, setAccountId] = useState(tx ? accountOf(tx) : props.defaultAccount);
+  const otherThan = (id: string) => (id !== CASH ? CASH : props.accounts.find((a) => a.id !== id)?.id ?? CASH);
+  const [toId, setToId] = useState(tx?.toAccountId ?? otherThan(accountId));
+  const canTransfer = props.accounts.length > 1 || type === 'transfer';
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState('');
   const [newEmoji, setNewEmoji] = useState(EMOJIS[0]);
@@ -459,12 +474,31 @@ function Editor(props: {
 
   async function save(categoryId: string) {
     if (!cents) return;
+    const transfer = type === 'transfer';
+    if (transfer && accountId === toId) return;
     await store.saveTx({
       id: tx?.id ?? crypto.randomUUID(), amount: cents, type, categoryId,
       note: note.trim(), date, createdAt: tx?.createdAt ?? Date.now(), accountId,
+      ...(transfer ? { toAccountId: toId } : {}),
     });
-    props.onSaved(date, accountId);
+    // A transfer's "from" says nothing about where everyday spending comes from, so it isn't remembered.
+    props.onSaved(date, transfer ? null : accountId);
   }
+
+  /** Picking the account already on the other side swaps the two, so From and To never match. */
+  function pick(side: 'from' | 'to', id: string) {
+    if (side === 'from') { if (id === toId) setToId(accountId); setAccountId(id); }
+    else { if (id === accountId) setAccountId(toId); setToId(id); }
+  }
+
+  const accountRow = (label: string, side: 'from' | 'to', current: string) => (
+    <div class="from">
+      <span>{label}</span>
+      {props.accounts.map((a) => (
+        <button key={a.id} class={a.id === current ? 'on' : ''} onClick={() => pick(side, a.id)}>{a.emoji} {a.name}</button>
+      ))}
+    </div>
+  );
 
   return (
     <div class="sheet-bg" onClick={props.onClose}>
@@ -472,6 +506,7 @@ function Editor(props: {
         <div class="toggle">
           <button class={type === 'expense' ? 'on' : ''} onClick={() => setType('expense')}>{t.expense}</button>
           <button class={type === 'income' ? 'on' : ''} onClick={() => setType('income')}>{t.income}</button>
+          {canTransfer && <button class={type === 'transfer' ? 'on' : ''} onClick={() => setType('transfer')}>{t.transfer}</button>}
         </div>
         <div class="amount" data-testid="amount">{currency}{amount || '0'}</div>
         <div class="keypad">
@@ -481,6 +516,15 @@ function Editor(props: {
           <input type="date" value={date} onInput={(e) => setDate((e.target as HTMLInputElement).value || today)} />
           <input placeholder={t.note} value={note} maxLength={60} onInput={(e) => setNote((e.target as HTMLInputElement).value)} />
         </div>
+        {type === 'transfer' ? (
+          <>
+            {accountRow(t.from, 'from', accountId)}
+            {accountRow(t.to, 'to', toId)}
+            <button class="wide primary" disabled={!cents || accountId === toId} onClick={() => save(TRANSFER)}>
+              🔁 {accountId === toId ? t.pickTwo : t.saveTransfer}
+            </button>
+          </>
+        ) : (<>
         {props.accounts.length > 1 && (
           <div class="from">
             <span>{type === 'income' ? t.to : t.from}</span>
@@ -518,6 +562,7 @@ function Editor(props: {
             </div>
           </div>
         )}
+        </>)}
         {tx && (
           <button class="wide danger" onClick={() => props.onDelete(tx)}>{t.delete}</button>
         )}

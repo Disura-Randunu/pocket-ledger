@@ -51,6 +51,20 @@ describe('money', () => {
     expect(parseBalance('abc')).toBeNull();
   });
 
+  it('moves money between accounts without counting it as spending', () => {
+    const accounts = [...DEFAULT_ACCOUNTS, { id: 'boc', name: 'BOC', emoji: '🏦', start: 50000 }];
+    const txs = [
+      tx({ type: 'transfer', categoryId: 'transfer', amount: 10000, accountId: 'boc', toAccountId: 'cash' }),
+      tx({ id: '2', amount: 300 }),
+    ];
+    const b = balances(accounts, txs);
+    expect(b.get('boc')).toBe(40000);
+    expect(b.get('cash')).toBe(9700);
+    expect(summarize(txs)).toMatchObject({ spent: 300, income: 0, net: -300 });
+    expect(toCSV(txs.slice(0, 1), DEFAULT_CATEGORIES, accounts)).toContain('BOC → Cash');
+    expect(() => validateBackup({ app: 'pocket-ledger', categories: [], transactions: txs })).not.toThrow();
+  });
+
   it('computes account balances and keeps fixes out of spending', () => {
     const accounts = [...DEFAULT_ACCOUNTS, { id: 'boc', name: 'BOC', emoji: '🏦', start: 50000 }];
     const txs = [
